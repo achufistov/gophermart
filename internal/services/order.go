@@ -54,43 +54,59 @@ func (s *OrderService) startAccrualCheck() {
 		ctx := context.Background()
 		orders, err := s.repo.GetProcessingOrders(ctx)
 		if err != nil {
+			fmt.Printf("Failed to get processing orders: %v\n", err)
 			continue
 		}
 
 		for _, order := range orders {
 			status, accrual, err := s.checkAccrualStatus(ctx, order.Number)
 			if err != nil {
+				fmt.Printf("Failed to check accrual status for order %s: %v\n", order.Number, err)
 				continue
 			}
 
-			if status == "PROCESSED" {
-				// Получаем user_id для заказа
-				userID, err := s.repo.GetOrderUserID(ctx, order.Number)
+			fmt.Printf("Order %s status: %s, accrual: %f\n", order.Number, status, accrual)
+
+			// Получаем user_id для заказа
+			userID, err := s.repo.GetOrderUserID(ctx, order.Number)
+			if err != nil {
+				fmt.Printf("Failed to get user ID for order %s: %v\n", order.Number, err)
+				continue
+			}
+
+			// Обновляем статус заказа
+			err = s.repo.UpdateOrderStatus(ctx, order.Number, status, accrual)
+			if err != nil {
+				fmt.Printf("Failed to update order status for order %s: %v\n", order.Number, err)
+				continue
+			}
+
+			// Если заказ обработан, обновляем баланс
+			if status == "PROCESSED" && accrual > 0 {
+				// Получаем текущий баланс
+				balance, err := s.repo.GetUserBalance(ctx, userID)
 				if err != nil {
+					fmt.Printf("Failed to get user balance for user %d: %v\n", userID, err)
 					continue
 				}
 
-				// Обновляем статус заказа и начисление
-				err = s.repo.UpdateOrderStatus(ctx, order.Number, status, accrual)
-				if err != nil {
-					continue
-				}
+				fmt.Printf("Current balance for user %d: %f\n", userID, balance.Current)
 
-				// Обновляем баланс пользователя
+				// Обновляем баланс
 				err = s.repo.UpdateUserBalance(ctx, userID, accrual)
 				if err != nil {
+					fmt.Printf("Failed to update user balance for user %d: %v\n", userID, err)
 					continue
 				}
-			} else if status == "INVALID" {
-				err = s.repo.UpdateOrderStatus(ctx, order.Number, status, 0)
+
+				// Проверяем обновленный баланс
+				balance, err = s.repo.GetUserBalance(ctx, userID)
 				if err != nil {
+					fmt.Printf("Failed to get updated balance for user %d: %v\n", userID, err)
 					continue
 				}
-			} else if status == "PROCESSING" {
-				err = s.repo.UpdateOrderStatus(ctx, order.Number, status, 0)
-				if err != nil {
-					continue
-				}
+
+				fmt.Printf("Updated balance for user %d: %f\n", userID, balance.Current)
 			}
 		}
 	}
@@ -122,6 +138,11 @@ func (s *OrderService) checkAccrualStatus(ctx context.Context, orderNumber strin
 	var accrualResp accrualResponse
 	if err := json.NewDecoder(resp.Body).Decode(&accrualResp); err != nil {
 		return "", 0, err
+	}
+
+	// Проверяем, что номер заказа совпадает
+	if accrualResp.Order != orderNumber {
+		return "", 0, fmt.Errorf("order number mismatch: expected %s, got %s", orderNumber, accrualResp.Order)
 	}
 
 	return accrualResp.Status, accrualResp.Accrual, nil

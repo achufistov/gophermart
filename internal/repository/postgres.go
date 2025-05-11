@@ -310,13 +310,30 @@ func (r *Repository) UpdateOrderStatus(ctx context.Context, orderNumber string, 
 
 // UpdateUserBalance обновляет баланс пользователя
 func (r *Repository) UpdateUserBalance(ctx context.Context, userID int64, amount float64) error {
-	query := `
+	// Проверяем существование записи баланса
+	var exists bool
+	err := r.db.QueryRow(ctx, `
+		SELECT EXISTS(SELECT 1 FROM user_balances WHERE user_id = $1)`, userID).Scan(&exists)
+	if err != nil {
+		return fmt.Errorf("failed to check balance existence: %w", err)
+	}
+
+	if !exists {
+		// Если записи нет, создаем новую
+		_, err = r.db.Exec(ctx, `
+			INSERT INTO user_balances (user_id, current_balance, withdrawn_balance)
+			VALUES ($1, $2, 0)`, userID, amount)
+		if err != nil {
+			return fmt.Errorf("failed to create user balance: %w", err)
+		}
+		return nil
+	}
+
+	// Обновляем существующий баланс
+	_, err = r.db.Exec(ctx, `
 		UPDATE user_balances
 		SET current_balance = current_balance + $1
-		WHERE user_id = $2
-	`
-
-	_, err := r.db.Exec(ctx, query, amount, userID)
+		WHERE user_id = $2`, amount, userID)
 	if err != nil {
 		return fmt.Errorf("failed to update user balance: %w", err)
 	}
