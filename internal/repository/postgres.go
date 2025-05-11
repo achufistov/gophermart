@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"fmt"
+	"os"
 	"time"
 
 	"gophermart/internal/models"
@@ -16,6 +17,23 @@ type Repository struct {
 	db *pgxpool.Pool
 }
 
+// initDatabase инициализирует базу данных, создавая необходимые таблицы
+func initDatabase(ctx context.Context, db *pgxpool.Pool) error {
+	// Читаем файл миграции
+	migrationSQL, err := os.ReadFile("migrations/001_init.sql")
+	if err != nil {
+		return fmt.Errorf("failed to read migration file: %w", err)
+	}
+
+	// Выполняем миграцию
+	_, err = db.Exec(ctx, string(migrationSQL))
+	if err != nil {
+		return fmt.Errorf("failed to execute migration: %w", err)
+	}
+
+	return nil
+}
+
 // NewRepository создает новый экземпляр репозитория
 func NewRepository(databaseURI string) (*Repository, error) {
 	pool, err := pgxpool.New(context.Background(), databaseURI)
@@ -25,6 +43,11 @@ func NewRepository(databaseURI string) (*Repository, error) {
 
 	if err := pool.Ping(context.Background()); err != nil {
 		return nil, fmt.Errorf("failed to ping database: %w", err)
+	}
+
+	// Инициализируем базу данных
+	if err := initDatabase(context.Background(), pool); err != nil {
+		return nil, fmt.Errorf("failed to initialize database: %w", err)
 	}
 
 	return &Repository{db: pool}, nil
