@@ -54,6 +54,21 @@ func (h *OrderHandler) UploadOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Проверяем, существует ли уже заказ у этого пользователя
+	orders, err := h.orderService.GetUserOrders(r.Context(), userID)
+	if err != nil {
+		utils.LogError("Failed to get user orders: %v", err)
+		utils.SendError(w, http.StatusInternalServerError, "Failed to get user orders")
+		return
+	}
+
+	for _, order := range orders {
+		if order.Number == string(orderNumber) {
+			utils.SendJSON(w, http.StatusOK, map[string]string{"message": "Order already exists"})
+			return
+		}
+	}
+
 	utils.SendJSON(w, http.StatusAccepted, map[string]string{"message": "Order uploaded successfully"})
 }
 

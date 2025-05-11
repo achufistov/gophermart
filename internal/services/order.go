@@ -64,21 +64,29 @@ func (s *OrderService) startAccrualCheck() {
 			}
 
 			if status == "PROCESSED" {
-				err = s.repo.UpdateOrderStatus(ctx, order.Number, status, accrual)
-				if err != nil {
-					continue
-				}
 				// Получаем user_id для заказа
 				userID, err := s.repo.GetOrderUserID(ctx, order.Number)
 				if err != nil {
 					continue
 				}
+
+				// Обновляем статус заказа и начисление
+				err = s.repo.UpdateOrderStatus(ctx, order.Number, status, accrual)
+				if err != nil {
+					continue
+				}
+
 				// Обновляем баланс пользователя
 				err = s.repo.UpdateUserBalance(ctx, userID, accrual)
 				if err != nil {
 					continue
 				}
 			} else if status == "INVALID" {
+				err = s.repo.UpdateOrderStatus(ctx, order.Number, status, 0)
+				if err != nil {
+					continue
+				}
+			} else if status == "PROCESSING" {
 				err = s.repo.UpdateOrderStatus(ctx, order.Number, status, 0)
 				if err != nil {
 					continue

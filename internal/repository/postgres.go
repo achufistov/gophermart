@@ -209,9 +209,9 @@ func (r *Repository) CreateWithdrawal(ctx context.Context, userID int64, orderNu
 
 	// Создаем запись о списании
 	_, err = tx.Exec(ctx, `
-		INSERT INTO withdrawals (user_id, order_number, sum)
-		VALUES ($1, $2, $3)`,
-		userID, orderNumber, amount)
+		INSERT INTO withdrawals (user_id, order_number, sum, created_at)
+		VALUES ($1, $2, $3, $4)`,
+		userID, orderNumber, amount, time.Now())
 	if err != nil {
 		return fmt.Errorf("failed to create withdrawal record: %w", err)
 	}
@@ -254,7 +254,11 @@ func (r *Repository) GetUserWithdrawals(ctx context.Context, userID int64) ([]mo
 		withdrawals = append(withdrawals, w)
 	}
 
-	return withdrawals, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating withdrawals: %w", err)
+	}
+
+	return withdrawals, nil
 }
 
 // GetProcessingOrders получает список заказов в обработке
