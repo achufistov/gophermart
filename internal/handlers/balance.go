@@ -65,7 +65,7 @@ func (h *BalanceHandler) CreateWithdrawal(w http.ResponseWriter, r *http.Request
 		case services.ErrInvalidOrderNumber:
 			utils.SendError(w, http.StatusUnprocessableEntity, "Invalid order number")
 		case services.ErrInsufficientFunds:
-			utils.SendError(w, http.StatusPaymentRequired, "Insufficient funds")
+			utils.SendError(w, http.StatusUnprocessableEntity, "Insufficient funds")
 		default:
 			utils.SendError(w, http.StatusInternalServerError, "Failed to create withdrawal")
 		}

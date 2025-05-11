@@ -23,7 +23,7 @@ func main() {
 
 	// Инициализируем сервисы
 	userService := services.NewUserService(repo)
-	orderService := services.NewOrderService(repo)
+	orderService := services.NewOrderService(repo, cfg.AccrualSystemAddress)
 	balanceService := services.NewBalanceService(repo)
 
 	// Инициализируем обработчики

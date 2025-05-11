@@ -256,3 +256,83 @@ func (r *Repository) GetUserWithdrawals(ctx context.Context, userID int64) ([]mo
 
 	return withdrawals, rows.Err()
 }
+
+// GetProcessingOrders получает список заказов в обработке
+func (r *Repository) GetProcessingOrders(ctx context.Context) ([]models.Order, error) {
+	query := `
+		SELECT number, status, accrual, created_at
+		FROM orders
+		WHERE status IN ('NEW', 'PROCESSING')
+		ORDER BY created_at ASC
+	`
+
+	rows, err := r.db.Query(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get processing orders: %w", err)
+	}
+	defer rows.Close()
+
+	var orders []models.Order
+	for rows.Next() {
+		var order models.Order
+		if err := rows.Scan(&order.Number, &order.Status, &order.Accrual, &order.CreatedAt); err != nil {
+			return nil, fmt.Errorf("failed to scan order: %w", err)
+		}
+		orders = append(orders, order)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating orders: %w", err)
+	}
+
+	return orders, nil
+}
+
+// UpdateOrderStatus обновляет статус заказа и начисление
+func (r *Repository) UpdateOrderStatus(ctx context.Context, orderNumber string, status string, accrual float64) error {
+	query := `
+		UPDATE orders
+		SET status = $1, accrual = $2
+		WHERE number = $3
+	`
+
+	_, err := r.db.Exec(ctx, query, status, accrual, orderNumber)
+	if err != nil {
+		return fmt.Errorf("failed to update order status: %w", err)
+	}
+
+	return nil
+}
+
+// UpdateUserBalance обновляет баланс пользователя
+func (r *Repository) UpdateUserBalance(ctx context.Context, userID int64, amount float64) error {
+	query := `
+		UPDATE user_balances
+		SET current = current + $1
+		WHERE user_id = $2
+	`
+
+	_, err := r.db.Exec(ctx, query, amount, userID)
+	if err != nil {
+		return fmt.Errorf("failed to update user balance: %w", err)
+	}
+
+	return nil
+}
+
+// GetOrderUserID получает ID пользователя для заказа
+func (r *Repository) GetOrderUserID(ctx context.Context, orderNumber string) (int64, error) {
+	query := `
+		SELECT user_id
+		FROM orders
+		WHERE number = $1
+	`
+
+	var userID int64
+	err := r.db.QueryRow(ctx, query, orderNumber).Scan(&userID)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get order user ID: %w", err)
+	}
+
+	return userID, nil
+}

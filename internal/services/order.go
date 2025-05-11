@@ -2,9 +2,12 @@ package services
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"strconv"
+	"time"
 
 	"gophermart/internal/models"
 	"gophermart/internal/repository"
@@ -15,14 +18,105 @@ var (
 	ErrOrderExists        = errors.New("order already exists")
 )
 
+type accrualResponse struct {
+	Order   string  `json:"order"`
+	Status  string  `json:"status"`
+	Accrual float64 `json:"accrual,omitempty"`
+}
+
 // OrderService представляет сервис для работы с заказами
 type OrderService struct {
-	repo *repository.Repository
+	repo                *repository.Repository
+	accrualSystemURL    string
+	accrualCheckTimeout time.Duration
 }
 
 // NewOrderService создает новый экземпляр сервиса заказов
-func NewOrderService(repo *repository.Repository) *OrderService {
-	return &OrderService{repo: repo}
+func NewOrderService(repo *repository.Repository, accrualSystemURL string) *OrderService {
+	service := &OrderService{
+		repo:                repo,
+		accrualSystemURL:    accrualSystemURL,
+		accrualCheckTimeout: 1 * time.Second,
+	}
+
+	// Запускаем горутину для проверки статусов заказов
+	go service.startAccrualCheck()
+
+	return service
+}
+
+// startAccrualCheck запускает периодическую проверку статусов заказов
+func (s *OrderService) startAccrualCheck() {
+	ticker := time.NewTicker(s.accrualCheckTimeout)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		ctx := context.Background()
+		orders, err := s.repo.GetProcessingOrders(ctx)
+		if err != nil {
+			continue
+		}
+
+		for _, order := range orders {
+			status, accrual, err := s.checkAccrualStatus(ctx, order.Number)
+			if err != nil {
+				continue
+			}
+
+			if status == "PROCESSED" {
+				err = s.repo.UpdateOrderStatus(ctx, order.Number, status, accrual)
+				if err != nil {
+					continue
+				}
+				// Получаем user_id для заказа
+				userID, err := s.repo.GetOrderUserID(ctx, order.Number)
+				if err != nil {
+					continue
+				}
+				// Обновляем баланс пользователя
+				err = s.repo.UpdateUserBalance(ctx, userID, accrual)
+				if err != nil {
+					continue
+				}
+			} else if status == "INVALID" {
+				err = s.repo.UpdateOrderStatus(ctx, order.Number, status, 0)
+				if err != nil {
+					continue
+				}
+			}
+		}
+	}
+}
+
+// checkAccrualStatus проверяет статус заказа в системе начислений
+func (s *OrderService) checkAccrualStatus(ctx context.Context, orderNumber string) (string, float64, error) {
+	url := fmt.Sprintf("%s/api/orders/%s", s.accrualSystemURL, orderNumber)
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return "", 0, err
+	}
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", 0, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNoContent {
+		return "NEW", 0, nil
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return "", 0, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	}
+
+	var accrualResp accrualResponse
+	if err := json.NewDecoder(resp.Body).Decode(&accrualResp); err != nil {
+		return "", 0, err
+	}
+
+	return accrualResp.Status, accrualResp.Accrual, nil
 }
 
 // CreateOrder создает новый заказ
@@ -40,7 +134,7 @@ func (s *OrderService) CreateOrder(ctx context.Context, userID int64, orderNumbe
 
 	for _, order := range orders {
 		if order.Number == orderNumber {
-			return ErrOrderExists
+			return nil // Возвращаем nil, если заказ уже существует у этого пользователя
 		}
 	}
 
