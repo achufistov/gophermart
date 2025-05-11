@@ -308,7 +308,7 @@ func (r *Repository) UpdateOrderStatus(ctx context.Context, orderNumber string, 
 func (r *Repository) UpdateUserBalance(ctx context.Context, userID int64, amount float64) error {
 	query := `
 		UPDATE user_balances
-		SET current = current + $1
+		SET current_balance = current_balance + $1
 		WHERE user_id = $2
 	`
 
@@ -332,6 +332,26 @@ func (r *Repository) GetOrderUserID(ctx context.Context, orderNumber string) (in
 	err := r.db.QueryRow(ctx, query, orderNumber).Scan(&userID)
 	if err != nil {
 		return 0, fmt.Errorf("failed to get order user ID: %w", err)
+	}
+
+	return userID, nil
+}
+
+// CheckOrderExists проверяет существование заказа и возвращает ID пользователя
+func (r *Repository) CheckOrderExists(ctx context.Context, orderNumber string) (int64, error) {
+	query := `
+		SELECT user_id
+		FROM orders
+		WHERE number = $1
+	`
+
+	var userID int64
+	err := r.db.QueryRow(ctx, query, orderNumber).Scan(&userID)
+	if err == pgx.ErrNoRows {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, fmt.Errorf("failed to check order existence: %w", err)
 	}
 
 	return userID, nil

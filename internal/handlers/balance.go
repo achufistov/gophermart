@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"gophermart/internal/models"
 	"gophermart/internal/services"
 	"gophermart/internal/utils"
 )
@@ -91,7 +92,7 @@ func (h *BalanceHandler) GetWithdrawals(w http.ResponseWriter, r *http.Request) 
 	}
 
 	if len(withdrawals) == 0 {
-		w.WriteHeader(http.StatusNoContent)
+		utils.SendJSON(w, http.StatusOK, []models.Withdrawal{})
 		return
 	}
 

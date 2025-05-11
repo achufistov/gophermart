@@ -47,7 +47,7 @@ func (h *OrderHandler) UploadOrder(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if err == services.ErrOrderExists {
-			utils.SendJSON(w, http.StatusOK, map[string]string{"message": "Order already exists"})
+			utils.SendError(w, http.StatusConflict, "Order already exists")
 			return
 		}
 		utils.SendError(w, http.StatusInternalServerError, "Failed to upload order")

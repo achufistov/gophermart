@@ -126,23 +126,21 @@ func (s *OrderService) CreateOrder(ctx context.Context, userID int64, orderNumbe
 		return ErrInvalidOrderNumber
 	}
 
-	// Проверяем существование заказа у пользователя
-	orders, err := s.repo.GetUserOrders(ctx, userID)
+	// Проверяем существование заказа
+	existingUserID, err := s.repo.CheckOrderExists(ctx, orderNumber)
 	if err != nil {
-		return fmt.Errorf("failed to check existing orders: %w", err)
+		return fmt.Errorf("failed to check existing order: %w", err)
 	}
-
-	for _, order := range orders {
-		if order.Number == orderNumber {
-			return nil // Возвращаем nil, если заказ уже существует у этого пользователя
+	if existingUserID != 0 {
+		if existingUserID == userID {
+			return nil // Заказ уже существует у этого пользователя
 		}
+		return ErrOrderExists // Заказ существует у другого пользователя
 	}
 
+	// Создаем новый заказ
 	err = s.repo.CreateOrder(ctx, userID, orderNumber)
 	if err != nil {
-		if err.Error() == fmt.Sprintf("order with number %s already exists", orderNumber) {
-			return ErrOrderExists
-		}
 		return fmt.Errorf("failed to create order: %w", err)
 	}
 
