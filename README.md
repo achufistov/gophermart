@@ -56,6 +56,8 @@ go run cmd/gophermart/main.go -a :8080 -d "postgres://host:host@localhost:5432/g
 
 ## API Endpoints
 
+Ниже приведены примеры работы с эндпоинтами приложения.
+
 ### Регистрация пользователя
 ```bash
 curl -X POST -H "Content-Type: application/json" \
